@@ -17,8 +17,25 @@
          handle_info/2, terminate/2, code_change/3]).
 
 -define(SERVER, ?MODULE).
+-define(ENDPOINT_HOST, "localhost").
+-define(ENDPOINT_PORT, 8080).
 
--record(state, {}).
+%% TODO depricate and use binary and secure protocol
+-define(ENDPOINT_URL, "http://localhost:8080/emit/").
+%% TODO use secure authorization
+%% Authorization: sesame
+-define(AUTH_KEY, "sesame").
+
+%% keep how many message?
+%% -define(BUFFER_SIZE, 1).
+%% -define(FLUSH_PERIOD, 1024). %% ms
+-define(POKE_INTERVAL, 1024*10). %% ms
+
+-record(state, {
+          %% connection?
+         }).
+
+-include("secondsight.hrl").
 
 %% @doc
 %% Creates an event manager
@@ -44,6 +61,8 @@ add_handler() ->
 %% @end
 -spec init(Args::[any()]) -> {ok, #state{}}.
 init([]) ->
+    poke_me_later(),
+    emit_it_later(started, app_configs()),
     {ok, #state{}}.
 
 %% @private
@@ -57,8 +76,10 @@ init([]) ->
                           {swap_handler, Args::[any()],
                            #state{}, Mod2::atom(), Args2::[any()]} |
                           remove_handler.
-handle_event(_Event, State) ->
+handle_event(Event, State) ->
+    emit(event, Event),
     {ok, State}.
+
 
 %% @private
 %% @doc
@@ -86,6 +107,13 @@ handle_call(_Request, State) ->
                          {swap_handler, Args::[any()],
                           #state{}, Mod2::atom(), Args2::[any()]} |
                          remove_handler.
+handle_info({emit, Type, Event}, State) ->
+    emit(Type, Event),
+    {ok, State};
+handle_info(poke, State) ->
+    emit(stats, get_stats()),
+    poke_me_later(),
+    {ok, State};
 handle_info(_Info, State) ->
     {ok, State}.
 
@@ -97,7 +125,8 @@ handle_info(_Info, State) ->
 %%
 %% @end
 -spec terminate(Reason::any(), #state{}) -> any().
-terminate(_Reason, _State) ->
+terminate(Reason, _State) ->
+    emit(terminated, {Reason, _State}),
     ok.
 
 %% @private
@@ -111,3 +140,34 @@ code_change(_OldVsn, State, _Extra) ->
 
 %%% Internal functions
 %%%===================================================================
+-spec emit(EventType::atom(), Event::term()) -> any().
+emit(EventType, Event) ->
+    Package = ?PACKAGE{event_type = EventType,
+                       event = Event,
+                       timestamp = os:timestamp(),
+                       node = node(),
+                       ring_members = nodes()},
+    Headers = [{"Authorization", ?AUTH_KEY}],
+    Request = {?ENDPOINT_URL, Headers, "application/bert",
+               term_to_binary(Package,[compressed])},
+    {_Result, _} = httpc:request(put, Request, [], []),
+    %% TODO to be debug log
+    _ = lager:info("~p, ~p", [EventType, Event]),
+    _Result.
+
+-spec poke_me_later() -> any().
+poke_me_later() ->
+    erlang:send_after(?POKE_INTERVAL, ?MODULE, poke).
+
+emit_it_later(EventType, Event) ->
+    erlang:send_after(?POKE_INTERVAL, ?MODULE, {emit, EventType, Event}).
+    
+
+get_stats() ->
+    {value, {disk, Disk}, Stats} = lists:keytake(disk, 1, riak_kv_stat:get_stats()),
+    DiskFlat = [{struct, [{id, list_to_binary(Id)}, {size, Size}, {used, Used}]} || {Id, Size, Used} <- Disk],
+    lists:append([Stats, [{disk, DiskFlat}], riak_core_stat:get_stats()]).
+
+
+app_configs() ->
+    [{AppName, application:get_all_env(AppName)} || {AppName, _, _} <- application:loaded_applications()].

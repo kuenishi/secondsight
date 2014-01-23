@@ -20,6 +20,11 @@ us to proactively find Riak cluster status.
  - stores into Riak w/ search on
  - enable 2i if on (to long data query)
 
+ - namespace: types = cluster name/id (global)
+              buckets/logs/keys/<name>-<timestamp>
+              buckets/stats/keys/<name>-<timestamp>
+              buckets/configs/keys/<timestamp> - data/body
+
 - secondsight runs query when GET API comes
  - design API [4]
  - what query to search [5]
@@ -29,8 +34,13 @@ us to proactively find Riak cluster status.
 
 [1] - [5] are short term TODOs
 
+## Qs
+
+- leveldb looks more suitable than bitcask (or much better backend?)
+
 ## long-term TODESIGN
 
+- create Solr Schema for secondsight, rather than dynamic schema?
 - Best Representation to understand situation
 - What else data we need?
 - Automatic Prediction?
