@@ -61,6 +61,7 @@ add_handler() ->
 %% @end
 -spec init(Args::[any()]) -> {ok, #state{}}.
 init([]) ->
+    _ = lager:info("starting!! ~p", [?MODULE]),
     poke_me_later(),
     emit_it_later(started, app_configs()),
     {ok, #state{}}.
@@ -152,7 +153,7 @@ emit(EventType, Event) ->
                term_to_binary(Package,[compressed])},
     {_Result, _} = httpc:request(put, Request, [], []),
     %% TODO to be debug log
-    _ = lager:info("~p, ~p", [EventType, Event]),
+    %% _ = lager:info("~p, ~p", [EventType, Event]),
     _Result.
 
 -spec poke_me_later() -> any().

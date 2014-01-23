@@ -37,6 +37,10 @@ us to proactively find Riak cluster status.
 ## Qs
 
 - leveldb looks more suitable than bitcask (or much better backend?)
+- `gen_event:add_handler(lager_event, secondsight_prober, []).` seems
+  successful in delivering log to secondsight server but failing in
+  periodical probing with `riak_kv_stat:get_stats/0`. come on!
+- for `riak.conf` , it's currently impossible to register custom gen_event handler
 
 ## long-term TODESIGN
 
