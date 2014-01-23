@@ -36,7 +36,20 @@ terminate(_Reason, _Req, _State) ->
 
 authorize(<<"sesame">>) -> ok;
 authorize(_AuthHeader) -> error.
-     
+
+%% encode every event to json
+event2json(Event) when is_tuple(Event) andalso element(1, Event) =:= lager_msg ->
+    jsonx:encode([{<<"message">>, iolist_to_binary(lager_msg:message(Event))}]);
+event2json(Event) when is_tuple(Event) ->
+    jsonx:encode([{<<"message">>, io_lib:format("~w", [Event])}]);
+event2json(Event) ->
+    case jsonx:encode(Event) of
+        Fail when is_tuple(Fail) ->
+            jsonx:encode([{<<"message">>, io_lib:format("~w", [Event])}]);
+        JSON when is_binary(JSON) ->
+            JSON
+    end.
+
 store(?PACKAGE{event_type = Type, event=Event,
                timestamp = {MS, S, US},
                node = Node, ring_members = _Members} = _Package) ->
@@ -49,17 +62,10 @@ store(?PACKAGE{event_type = Type, event=Event,
 
     %% TODO we have to know user from auth info and Members
 
-    {CT, Data} = case jsonx:encode(Event) of
-                     Fail when is_tuple(Fail) ->
-                         {<<"text/plain">>, io_lib:format("~w", [Event])};
-                     JSON ->
-                         {<<"application/json">>, JSON}
-                 end,
-
     Key = list_to_binary(io_lib:format(":~p:~p:~p", [MS, S, US])),
     RiakObj = riakc_obj:new({<<"opensesame:secondsight">>, atom_to_binary(Type, latin1)},
                             <<(atom_to_binary(Node, latin1))/binary, Key/binary>>,
-                            Data, CT),
+                            event2json(Event), <<"application/json">>),
     
     ok = riakc_pb_socket:put(Pid, RiakObj, [{w,0}]),
     riakc_pb_socket:stop(Pid).
