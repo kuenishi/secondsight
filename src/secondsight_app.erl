@@ -10,14 +10,15 @@
 %% ===================================================================
 
 start(_StartType, _StartArgs) ->
-    Dispatch = cowboy_router:compile([
-                                      %% {URIHost, list({URIPath, Handler, Opts})}
-                                      {'_', [{'_', secondsight_handler, []}]}
-                                     ]),
+    DispatchTable = [%% {URIHost, list({URIPath, Handler, Opts})}
+                     {'_', [{"/", cowboy_static, {priv_file, secondsight, "static/index.html"}},
+                            {'_', secondsight_handler, []}
+                           ]}],
+    CompiledDispatch = cowboy_router:compile(DispatchTable),
     %% Name, NbAcceptors, TransOpts, ProtoOpts
     cowboy:start_http(secondsight, 100,
                       [{port, 8080}],
-                      [{env, [{dispatch, Dispatch}]}]),
+                      [{env, [{dispatch, CompiledDispatch}]}]),
     secondsight_sup:start_link().
 
 stop(_State) ->
