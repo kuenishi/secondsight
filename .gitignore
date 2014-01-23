@@ -1,0 +1,9 @@
+*.json
+deps
+*~
+.eunit
+*.plt
+*.o
+ebin/*.beam
+ebin/*.app
+rel/healthb
