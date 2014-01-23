@@ -65,3 +65,8 @@ check: compile xref
 
 rel:
 	cd rel && ../rebar generate
+
+stage: #rel
+	rm -rf rel/secondsight/lib/secondsight* && ln -sf $(abspath apps/secondsight) rel/secondsight/lib
+
+# @(foreach dep,$(wildcard deps/*), rm -rf rel/secondsight/lib/$(shell basename $(dep))* && ln -sf $(abspath $(dep)) rel/secondsight/lib;)
