@@ -5,7 +5,9 @@
   {registered, []},
   {applications, [
                   kernel,
-                  stdlib
+                  stdlib,
+                  cowboy,
+                  lager
                  ]},
   {mod, { secondsight_app, []}},
   {env, []}
