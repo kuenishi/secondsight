@@ -5,51 +5,39 @@
 %%% @end
 %%% Created : 23 Jan 2014 by UENISHI Kota <kota@basho.com>
 
--module(secondsight_prober).
+-module(secondsight_event).
 
 -behaviour(gen_event).
 
 %% API
--export([start_link/0, add_handler/0]).
+-export([start_link/0, add_handler/0, add_to_lager/0]).
 
 %% gen_event callbacks
 -export([init/1, handle_event/2, handle_call/2, 
          handle_info/2, terminate/2, code_change/3]).
 
--define(SERVER, ?MODULE).
--define(ENDPOINT_HOST, "localhost").
--define(ENDPOINT_PORT, 8080).
-
-%% TODO depricate and use binary and secure protocol
--define(ENDPOINT_URL, "http://localhost:8080/emit/").
-%% TODO use secure authorization
-%% Authorization: sesame
--define(AUTH_KEY, "sesame").
-
-%% keep how many message?
-%% -define(BUFFER_SIZE, 1).
-%% -define(FLUSH_PERIOD, 1024). %% ms
--define(POKE_INTERVAL, 1024*10). %% ms
+-include("secondsight.hrl").
 
 -record(state, {
           %% connection?
          }).
-
--include("secondsight.hrl").
 
 %% @doc
 %% Creates an event manager
 %% @spec start_link() -> {ok, Pid} | {error, Error}
 %% @end
 start_link() ->
-    gen_event:start_link({local, ?SERVER}).
+    gen_event:start_link({local, ?MODULE}).
 
 %% @doc
 %% Adds an event handler
 %% @spec add_handler() -> ok | {'EXIT', Reason} | term()
 %% @end
 add_handler() ->
-    gen_event:add_handler(?SERVER, ?MODULE, []).
+    gen_event:add_handler(?MODULE, ?MODULE, []).
+
+add_to_lager() ->
+    gen_event:add_handler(lager_event, ?MODULE, []).
 
 %%% gen_event callbacks
 %%%===================================================================
@@ -61,9 +49,6 @@ add_handler() ->
 %% @end
 -spec init(Args::[any()]) -> {ok, #state{}}.
 init([]) ->
-    _ = lager:info("starting!! ~p", [?MODULE]),
-    poke_me_later(),
-    emit_it_later(started, app_configs()),
     {ok, #state{}}.
 
 %% @private
@@ -93,9 +78,12 @@ handle_event(Event, State) ->
                          {swap_handler, Reply::any(), Args::[any()],
                           #state{}, Mod2::atom(), Args2::[any()]} |
                          {remove_handler, Reply::any()}.
+handle_call({emit, ET, E}, State) ->
+    emit(ET, E),
+    {ok, ok, State};
 handle_call(_Request, State) ->
     Reply = ok,
-    {ok, Reply, State}.
+    {ok, {error, unknown_request}, State}.
 
 %% @private
 %% @doc
@@ -108,13 +96,6 @@ handle_call(_Request, State) ->
                          {swap_handler, Args::[any()],
                           #state{}, Mod2::atom(), Args2::[any()]} |
                          remove_handler.
-handle_info({emit, Type, Event}, State) ->
-    emit(Type, Event),
-    {ok, State};
-handle_info(poke, State) ->
-    emit(stats, get_stats()),
-    poke_me_later(),
-    {ok, State};
 handle_info(_Info, State) ->
     {ok, State}.
 
@@ -126,8 +107,7 @@ handle_info(_Info, State) ->
 %%
 %% @end
 -spec terminate(Reason::any(), #state{}) -> any().
-terminate(Reason, _State) ->
-    emit(terminated, {Reason, _State}),
+terminate(_Reason, _State) ->
     ok.
 
 %% @private
@@ -155,20 +135,3 @@ emit(EventType, Event) ->
     %% TODO to be debug log
     %% _ = lager:info("~p, ~p", [EventType, Event]),
     _Result.
-
--spec poke_me_later() -> any().
-poke_me_later() ->
-    erlang:send_after(?POKE_INTERVAL, ?MODULE, poke).
-
-emit_it_later(EventType, Event) ->
-    erlang:send_after(?POKE_INTERVAL, ?MODULE, {emit, EventType, Event}).
-    
-
-get_stats() ->
-    {value, {disk, Disk}, Stats} = lists:keytake(disk, 1, riak_kv_stat:get_stats()),
-    DiskFlat = [{struct, [{id, list_to_binary(Id)}, {size, Size}, {used, Used}]} || {Id, Size, Used} <- Disk],
-    lists:append([Stats, [{disk, DiskFlat}], riak_core_stat:get_stats()]).
-
-
-app_configs() ->
-    [{AppName, application:get_all_env(AppName)} || {AppName, _, _} <- application:loaded_applications()].

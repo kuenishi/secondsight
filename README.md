@@ -7,6 +7,14 @@ us to proactively find Riak cluster status.
 1. Riak => data => secondsignt =(metrics)=> CSE
 2. CSE => useful insight => users => happy
 
+# howto
+
+1. compile
+2. copy `secondsight_event.beam` and `secondsight_probe.beam` to basho-patches directory
+3. restart riak or type `l(secondsight_event), l(secondsight_probe)` in attached console of riak
+4. type `secondsight_event:add_to_lager(), secondsight_probe:start_link()` at attached console of riak
+5. see what happens in console.log
+
 # design
 
 ## Riak's log collector
