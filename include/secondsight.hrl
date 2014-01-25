@@ -11,7 +11,7 @@
 -define(ENDPOINT_PORT, 8080).
 
 %% TODO depricate and use binary and secure protocol
--define(ENDPOINT_URL, "http://localhost:8080/emit/").
+-define(ENDPOINT_URL, "http://localhost:8080/v1/emit/").
 %% TODO use secure authorization
 %% Authorization: sesame
 -define(AUTH_KEY, "sesame").

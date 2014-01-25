@@ -24,15 +24,15 @@
 
 %% @doc
 %% Creates an event manager
-%% @spec start_link() -> {ok, Pid} | {error, Error}
 %% @end
+-spec start_link() -> {ok, pid()} | {error, any()}.
 start_link() ->
     gen_event:start_link({local, ?MODULE}).
 
 %% @doc
 %% Adds an event handler
-%% @spec add_handler() -> ok | {'EXIT', Reason} | term()
 %% @end
+-spec add_handler() -> ok | {'EXIT', Reason::any()} | term().
 add_handler() ->
     gen_event:add_handler(?MODULE, ?MODULE, []).
 

@@ -16,6 +16,10 @@
 -export([init/1, handle_call/3, handle_cast/2, handle_info/2,
          terminate/2, code_change/3]).
 
+%% temporary, for query!! not for probing
+%%-export([map/3, reduce/2]).
+
+
 -include("secondsight.hrl").
 
 -record(state, {}).
@@ -47,15 +51,15 @@ init([]) ->
 %% @private
 %% @doc
 %% Handling call messages
-%%
-%% @spec handle_call(Request, From, State) ->
-%%                                   {reply, Reply, State} |
-%%                                   {reply, Reply, State, Timeout} |
-%%                                   {noreply, State} |
-%%                                   {noreply, State, Timeout} |
-%%                                   {stop, Reason, Reply, State} |
-%%                                   {stop, Reason, State}
 %% @end
+%%
+-spec handle_call(term(), term(), #state{}) ->
+                         {reply, Reply::term(), #state{}} |
+                         {reply, Reply::term(), #state{}, Timeout::non_neg_integer()} |
+                         {noreply, #state{}} |
+                         {noreply, #state{}, Timeout::non_neg_integer()} |
+                         {stop, Reason::term(), Reply::term(), #state{}} |
+                         {stop, Reason::term(), #state{}}.
 handle_call({emit, ET, E}, _, State) ->
     emit(ET, E),
     {reply, ok, State};
@@ -66,11 +70,11 @@ handle_call(_Request, _From, State) ->
 %% @private
 %% @doc
 %% Handling cast messages
-%%
-%% @spec handle_cast(Msg, State) -> {noreply, State} |
-%%                                  {noreply, State, Timeout} |
-%%                                  {stop, Reason, State}
 %% @end
+%%
+-spec handle_cast(term(), #state{}) -> {noreply, #state{}} |
+                                       {noreply, #state{}, Timeout::non_neg_integer()} |
+                                       {stop, Reason::term(), #state{}}.
 handle_cast(_Msg, State) ->
     {noreply, State}.
 
@@ -142,3 +146,14 @@ app_configs() ->
 -spec poke_me_later() -> any().
 poke_me_later() ->
     erlang:send_after(?POKE_INTERVAL, self(), poke).
+
+
+
+%% map({error, notfound}=NF, KD, Action) ->
+%%     notfound_map_action(NF, KD, Action);
+%% %% map(RiakObject, _, _) ->
+%% %%     Key = riak_object:get_key(RiakObject),
+%% %%     Value = riak_object:get_value(RiakObject),
+%%    _ = lager:log(info, 
+%%    [riak_object:get_value(RiakObject)].
+

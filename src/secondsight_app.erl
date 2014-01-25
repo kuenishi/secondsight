@@ -13,6 +13,8 @@ start(_StartType, _StartArgs) ->
     DispatchTable = [%% {URIHost, list({URIPath, Handler, Opts})}
                      {'_', [{"/", cowboy_static, {priv_file, secondsight, "static/index.html"}},
                             {"/assets/[...]", cowboy_static, {priv_dir, secondsight, "static/assets"}},
+                            {"/v1/emit/[...]", secondsight_sink, []},
+                            {"/v1/data/[...]", secondsight_handler, []},
                             {'_', secondsight_handler, []}
                            ]}],
     CompiledDispatch = cowboy_router:compile(DispatchTable),

@@ -11,61 +11,97 @@ init(_Type, Req, _Opts) ->
     {ok, Req, undefined_state}.
 
 handle(Req, State) ->
-    {ok, Body, _}= cowboy_req:body(Req),
+    %%{ok, Body, _}= cowboy_req:body(Req),
     {HeaderVal, _} = cowboy_req:header(<<"authorization">>, Req), 
     _ = lager:info("auth: ~p", [HeaderVal]),
-    case  authorize(HeaderVal) of
-        ok ->
-    %% {ok, Req2} = cowboy_req:reply(200, [
-    %%                                     {<<"content-type">>, <<"text/plain">>}
-    %%                                    ], <<"Hello World!">>, Req),
-            {ok, Req2} = cowboy_req:reply(200, [], <<>>, Req),
-            Event = binary_to_term(Body),
-            store(Event),
-            _ = lager:info("from: ~p", [Event]),
+%%    case  authorize(HeaderVal) of
+    case cowboy_req:body(Req) of
+        {ok, <<>>, _} ->
+            case cowboy_req:qs_val(<<"q">>, Req, undefined) of
+                {undefined, _} ->
+                    {ok, Req2} = cowboy_req:reply(402, [
+                                                        {<<"content-type">>, <<"text/plain">>}
+                                                       ], <<"malformed request">>, Req),
+                    {ok, Req2, State};
+                {QS, _} ->
+                    {ok, Pid} = riakc_pb_socket:start_link(localhost, 8087),
+                    {ok, Res} = riakc_pb_socket:search(Pid, <<"sesame_index">>, QS, [{rows, 1024}]),
+                    ok = riakc_pb_socket:stop(Pid),
+                    {search_results, Result, _, Num} = Res,
+                    Str = io_lib:format("<body>~p <br/> ~ts</body>",
+                                        [Num, unicode:characters_to_list(jsonx:encode(Result))]),
+                    {ok, Req2} = cowboy_req:reply(200, [{<<"content-type">>, <<"text/html">>}],
+                                                  list_to_binary(Str), Req),
+                    {ok, Req2, State}
+            end;
+        {ok, Bin, _} when is_binary(Bin) ->
+            {ok, BodyQs, _} = cowboy_req:body_qs(Req),
+            Key = proplists:get_value(<<"key">>, BodyQs, undefined),
+
+            QS = <<Key/binary, ":*">>,  %iolist_to_binary([ [M, ":*" || M <- Metric
+            {ok, Pid} = riakc_pb_socket:start_link(localhost, 8087),
+            {ok, Res} = riakc_pb_socket:search(Pid, <<"sesame_index">>, QS, [{rows, 1024}]),
+            {search_results, Result, _, _Num} = Res,
+            {ok, MapRedResult} = get_all_keys(Pid, search_result_to_tbk(Result)),
+            ok = riakc_pb_socket:stop(Pid),
+            ExtractValue = fun(RiakObj) ->
+                                   RKey = element(3, RiakObj),
+                                   RCon0 = case element(4, RiakObj) of
+                                               [RCon|_] -> RCon;
+                                               RCon -> RCon
+                                           end,
+                                   JSON = element(3, RCon0),
+                                   {Proplist} = jsonx:decode(JSON),
+                                   %% lager:info("~p ~p", [Key, RKey]),
+                                   Value = proplists:get_value(Key, Proplist), 
+                                   {RKey, Value}
+                           end,
+            Values = map_mapred_result(ExtractValue, MapRedResult),
+            _ = lager:info("~p", [Values]),
+            {ok, Req2} = cowboy_req:reply(200, [{<<"content-type">>, <<"application/json">>}],
+                                          jsonx:encode(Values), Req),
             {ok, Req2, State};
         _E ->
-            _ = lager:error("auth error: ~p", [binary_to_term(Body)]),
-            {ok, Req2} = cowboy_req:reply(404, [], <<>>, Req),
+            _ = lager:error("auth error: ~p", [_E]),
+            Str = <<>>, %io_lib:format("~p", [_E]),
+            {ok, Req2} = cowboy_req:reply(500, [],
+                                          Str, Req),
             {ok, Req2, State}
     end.
 
 terminate(_Reason, _Req, _State) ->
     ok.
 
+doc2tbk([], KD) -> KD;
+doc2tbk([{<<"_yz_rt">>, Type}|TL], {{{undefined, B}, K}, undefined}) ->
+    doc2tbk(TL, {{{Type, B}, K}, undefined});
+doc2tbk([{<<"_yz_rb">>, Buck}|TL], {{{T, undefined}, K}, undefined}) ->
+    doc2tbk(TL, {{{T, Buck}, K}, undefined});
+doc2tbk([{<<"_yz_rk">>, Key }|_], {{{T, B}, undefined}, undefined}) ->
+    {{{T, B}, Key}, undefined};
+doc2tbk([_|TL], KD) ->
+    doc2tbk(TL, KD).
 
-authorize(<<"sesame">>) -> ok;
-authorize(_AuthHeader) -> error.
-
-%% encode every event to json
-event2json(Event) when is_tuple(Event) andalso element(1, Event) =:= lager_msg ->
-    jsonx:encode([{<<"message">>, iolist_to_binary(lager_msg:message(Event))}]);
-event2json(Event) when is_tuple(Event) ->
-    jsonx:encode([{<<"message">>, io_lib:format("~w", [Event])}]);
-event2json(Event) ->
-    case jsonx:encode(Event) of
-        Fail when is_tuple(Fail) ->
-            jsonx:encode([{<<"message">>, io_lib:format("~w", [Event])}]);
-        JSON when is_binary(JSON) ->
-            JSON
-    end.
-
-store(?PACKAGE{event_type = Type, event=Event,
-               timestamp = {MS, S, US},
-               node = Node, ring_members = _Members} = _Package) ->
-    Host = localhost,
-    Port = 8087,
-    {ok, Pid} = riakc_pb_socket:start_link(Host, Port),
-
-    %% TODO measuring skew between remote and local would be useful
-    %% {MS,S,US} = os:timestamp(),
-
-    %% TODO we have to know user from auth info and Members
-
-    Key = list_to_binary(io_lib:format(":~p:~p:~p", [MS, S, US])),
-    RiakObj = riakc_obj:new({<<"opensesame:secondsight">>, atom_to_binary(Type, latin1)},
-                            <<(atom_to_binary(Node, latin1))/binary, Key/binary>>,
-                            event2json(Event), <<"application/json">>),
+search_result_to_tbk(Results) ->
+    lists:map(fun({_, Doc}) ->
+                      doc2tbk(Doc, {{{undefined, undefined}, undefined}, undefined})
+              end, Results).
     
-    ok = riakc_pb_socket:put(Pid, RiakObj, [{w,0}]),
-    riakc_pb_socket:stop(Pid).
+-spec get_all_keys(pid(), [{binary(),binary()}]) -> list().
+get_all_keys(Riakc, BKs) ->
+    MapRedQuery = [{map, {modfun, riak_kv_mapreduce, map_identity},
+                    <<"filter_notfound">>, true},
+                   {reduce, {modfun, riak_kv_mapreduce, reduce_sort},
+                    undefined, true}],
+    riakc_pb_socket:mapred(Riakc, BKs, MapRedQuery).
+
+
+map_mapred_result(Fun, Result) ->
+    map_mapred_result(Fun, Result, []).
+
+map_mapred_result(_, [], Mapped) -> lists:reverse(Mapped);
+map_mapred_result(Fun, [{_, Objects}|L], Mapped) ->
+    Revmapped = lists:foldl(fun(Elem, Acc0) ->
+                                    [Fun(Elem)|Acc0]
+                            end, Mapped, Objects),
+    map_mapred_result(Fun, L, Revmapped).
